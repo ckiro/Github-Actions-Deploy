@@ -1,0 +1,47 @@
+name: deploy demo_project
+
+on: #trigger event
+  push: # push event
+    branches: [ main ] # main branches
+  pull_request: # pull_request event
+    branches: [ main ] # main branches
+jobs:
+  build:
+    runs-on: ubuntu-latest # run environment for github actions
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}  # slack notification webhook url
+    steps:
+      - name: Checkout # checkout branches
+      - uses: actions/checkout@v2
+      - name: Set up Go
+        uses: actions/setup-go@v2 
+        with:
+          go-version: 1.16.5 # golang version
+      - name: Test 
+        run: go test -v ./..
+      - name: Build #  build makefile
+        run: CGO_ENABLED=0 go build -o demo_project -tags=jsoniter
+      - name: SCP Files  # copy compressed files to server via scp
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.REMOTE_HOST }}  # server host
+          username: ${{ secrets.REMOTE_USER }}  # server user
+          port: ${{ secrets.REMOTE_PORT }}  # server port
+          key: ${{ secrets.SERVER_SSH_KEY }}  # server ssh_key
+          source: 'demo_project' # build files
+          target: ${{ secrets.REMOTE_TARGET }}  # copy to server path
+      - name: SSH Remote Commands # deploy after copy 
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.REMOTE_HOST }} # server host
+          username: ${{ secrets.REMOTE_USER }}  # server user
+          port: ${{ secrets.REMOTE_PORT }} # server port
+          key: ${{ secrets.SERVER_SSH_KEY }}  # server ssh_key
+          script: ${{ secrets.AFTER_COMMAND }} # deploy command
+      - name: Send Meaasge to Slack workflow # deploy after send message to slack
+        uses: act10ns/slack@v1
+        with:
+          status: ${{ job.status }} # build status
+          steps: ${{ toJson(steps) }}
+          channel: '#workflows'
+        if: always()
