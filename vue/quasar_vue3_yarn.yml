@@ -1,0 +1,46 @@
+name: deploy demo_project
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+      - name: Install Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: "12.22.1"
+      - run: yarn install
+      - run: yarn global add @quasar/cli
+      - run: quasar build
+      - name: SSH Remote Commands
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          port: ${{ secrets.REMOTE_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: ${{ secrets.AFTER_COMMAND }}
+      - name: SCP Files 
+        uses: nogsantos/scp-deploy@master
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          user: ${{ secrets.REMOTE_USER }}
+          port: ${{ secrets.REMOTE_PORT }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          src: './dist/spa/*'
+          remote: ${{ secrets.REMOTE_TARGET }}
+      - name: Send Meaasge to Slack workflow
+        uses: act10ns/slack@v1
+        with:
+          status: ${{ job.status }}
+          steps: ${{ toJson(steps) }}
+          channel: '#workflows'
+        if: always()  
+
